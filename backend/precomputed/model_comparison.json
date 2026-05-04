@@ -1,0 +1,11 @@
+{
+  "graph_stats": {
+    "num_nodes": 19438,
+    "num_edges": 193951,
+    "num_classes": 16,
+    "avg_degree": 19.96,
+    "density": 0.001027
+  },
+  "nc_metrics": {},
+  "lp_metrics": {}
+}

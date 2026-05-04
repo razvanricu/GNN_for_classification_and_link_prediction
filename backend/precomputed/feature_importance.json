@@ -1,0 +1,82 @@
+[
+  {
+    "word": "cable",
+    "importance": 0.033486471694617596
+  },
+  {
+    "word": "lens",
+    "importance": 0.025759325157513783
+  },
+  {
+    "word": "camera",
+    "importance": 0.022875880174486454
+  },
+  {
+    "word": "hdmi",
+    "importance": 0.020639774565469997
+  },
+  {
+    "word": "tripod",
+    "importance": 0.016051881286393215
+  },
+  {
+    "word": "light",
+    "importance": 0.015565926457372209
+  },
+  {
+    "word": "film",
+    "importance": 0.014428489407527176
+  },
+  {
+    "word": "photo",
+    "importance": 0.013695585225631033
+  },
+  {
+    "word": "audio",
+    "importance": 0.013257596333576769
+  },
+  {
+    "word": "digital",
+    "importance": 0.012555240024438561
+  },
+  {
+    "word": "wall",
+    "importance": 0.010938474846749625
+  },
+  {
+    "word": "ear",
+    "importance": 0.010934225012749767
+  },
+  {
+    "word": "dvd",
+    "importance": 0.010093298451520832
+  },
+  {
+    "word": "security",
+    "importance": 0.009007323821601626
+  },
+  {
+    "word": "zoom",
+    "importance": 0.008919337224657023
+  },
+  {
+    "word": "mount",
+    "importance": 0.008766015963646795
+  },
+  {
+    "word": "studio",
+    "importance": 0.008744450988588275
+  },
+  {
+    "word": "female",
+    "importance": 0.008692440598343476
+  },
+  {
+    "word": "video",
+    "importance": 0.008278582138345312
+  },
+  {
+    "word": "phone",
+    "importance": 0.008099993214570037
+  }
+]

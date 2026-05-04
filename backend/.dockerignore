@@ -1,0 +1,10 @@
+__pycache__
+*.pyc
+.venv
+venv
+tests
+tuner_*
+tuning_*
+*.egg-info
+.git
+.env

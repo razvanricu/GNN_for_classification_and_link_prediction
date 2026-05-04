@@ -1,0 +1,68 @@
+{
+  "thresholds": {
+    "GraphSAGE": 0.5944377183914185,
+    "MLP": 0.5223514437675476,
+    "GCN": 0.6507758498191833,
+    "GAT": 0.6270755529403687
+  },
+  "num_features": 750,
+  "num_classes": 16,
+  "num_nodes": 19438,
+  "target_classes": [
+    "Film Photography",
+    "Digital Cameras",
+    "Binoculars & Scopes",
+    "Lenses",
+    "Tripods & Monopods",
+    "Video Surveillance",
+    "Lighting & Studio",
+    "Flashes",
+    "Video Cables",
+    "Audio Cables",
+    "TV Accessories & Parts",
+    "Headphone Accessories",
+    "Connectors & Adapters",
+    "Media Storage & Organization",
+    "Distribution",
+    "Telephone Accessories"
+  ],
+  "hp": {
+    "gcn_nc": {
+      "out_feat": 64,
+      "dropout": 0.30000000000000004
+    },
+    "gat_nc": {
+      "num_heads": 8,
+      "out_feat": 32,
+      "dropout": 0.0
+    },
+    "sage_nc": {
+      "out_feat": 64,
+      "dropout": 0.30000000000000004,
+      "normalize": false
+    },
+    "mlp_nc": {
+      "units_1": 256,
+      "dropout_1": 0.5,
+      "units_2": 64,
+      "dropout_2": 0.30000000000000004
+    },
+    "sage_lp": {
+      "out_feat": 128,
+      "dropout": 0.0
+    },
+    "mlp_lp": {
+      "hidden_dim": 128,
+      "dropout": 0.0
+    },
+    "gcn_lp": {
+      "out_feat": 128,
+      "dropout": 0.1
+    },
+    "gat_lp": {
+      "num_heads": 8,
+      "out_feat": 32,
+      "dropout": 0.1
+    }
+  }
+}
