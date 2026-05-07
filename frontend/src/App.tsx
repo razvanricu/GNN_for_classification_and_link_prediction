@@ -6,7 +6,6 @@ import Catalog from "./pages/Catalog";
 import ProductDetail from "./pages/ProductDetail";
 import InductiveDemo from "./pages/InductiveDemo";
 import Analytics from "./pages/Analytics";
-import Vocabulary from "./pages/Vocabulary";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 60_000, retry: 1 } },
@@ -23,7 +22,6 @@ export default function App() {
             <Route path="product/:asin" element={<ProductDetail />} />
             <Route path="inductive" element={<InductiveDemo />} />
             <Route path="analytics" element={<Analytics />} />
-            <Route path="vocabulary" element={<Vocabulary />} />
           </Route>
         </Routes>
       </BrowserRouter>

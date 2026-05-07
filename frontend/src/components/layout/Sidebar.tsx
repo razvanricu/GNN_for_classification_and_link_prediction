@@ -5,7 +5,6 @@ const links = [
   { to: "/catalog", label: "Catalog" },
   { to: "/inductive", label: "Inductive Demo" },
   { to: "/analytics", label: "Analytics" },
-  { to: "/vocabulary", label: "Vocabulary" },
 ];
 
 export default function Sidebar() {

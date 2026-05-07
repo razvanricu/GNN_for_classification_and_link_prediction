@@ -39,3 +39,18 @@ def get_link_suggestions(
             detail=f"ASIN '{asin}' is not in the graph. Use POST /api/predict/lp for new products.",
         )
     return suggestions
+
+
+@router.get("/{asin}/link-accuracy")
+def get_link_accuracy(
+    asin: str,
+    lp_service=Depends(get_lp_service),
+):
+    """Get ALL predicted links above threshold and compare with real edges."""
+    try:
+        return lp_service.all_above_threshold(asin)
+    except KeyError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"ASIN '{asin}' is not in the graph.",
+        )

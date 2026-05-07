@@ -49,7 +49,17 @@ def graph_stats(registry=Depends(get_model_registry)):
 
 @router.get("/vocabulary")
 def vocabulary(registry=Depends(get_model_registry)):
-    """Return the full TF-IDF vocabulary (750 words) with their IDF weights."""
+    """Return vocabulary info. With SBERT returns embedding metadata; with TF-IDF returns word list."""
+    if registry._vectorizer_type == "sbert":
+        return {
+            "type": "sbert",
+            "model_name": "all-MiniLM-L6-v2",
+            "embedding_dim": registry.num_features,
+            "total": registry.num_features,
+            "description": "Dense sentence embeddings (384-dimensional) from Sentence-BERT.",
+            "words": [],  # No discrete vocabulary with SBERT
+        }
+    # Legacy TF-IDF
     vectorizer = registry.vectorizer
     feature_names = vectorizer.get_feature_names_out().tolist()
     idf_weights = vectorizer.idf_.tolist()
@@ -57,6 +67,5 @@ def vocabulary(registry=Depends(get_model_registry)):
         {"word": word, "idf": round(idf, 4), "index": i}
         for i, (word, idf) in enumerate(zip(feature_names, idf_weights))
     ]
-    # Sort by IDF ascending (most common / discriminative first)
     vocab.sort(key=lambda x: x["idf"])
-    return {"total": len(vocab), "words": vocab}
+    return {"type": "tfidf", "total": len(vocab), "words": vocab}

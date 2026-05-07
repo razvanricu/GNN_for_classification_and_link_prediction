@@ -44,6 +44,7 @@ class ModelRegistry:
         self.class_names: Optional[list] = None
         self.asin_to_idx: Optional[Dict[str, int]] = None
         self.vectorizer = None
+        self._vectorizer_type: str = "tfidf"  # "tfidf" or "sbert"
         self.lp_config: Optional[dict] = None
 
         # Graph objects used by layers
@@ -144,8 +145,28 @@ class ModelRegistry:
         )
 
     def _load_vectorizer(self):
-        with open(self._models_dir / "tfidf_vectorizer.pkl", "rb") as f:
-            self.vectorizer = pickle.load(f)
+        # Try SBERT config first, fall back to TF-IDF pickle
+        sbert_path = self._models_dir / "encoder_config.pkl"
+        tfidf_path = self._models_dir / "tfidf_vectorizer.pkl"
+
+        if sbert_path.exists():
+            with open(sbert_path, "rb") as f:
+                cfg = pickle.load(f)
+            if isinstance(cfg, dict) and cfg.get("type") == "sbert":
+                from sentence_transformers import SentenceTransformer
+                self.vectorizer = SentenceTransformer(
+                    cfg["model_name"], local_files_only=True
+                )
+                self._vectorizer_type = "sbert"
+                logger.info("  Loaded SBERT encoder: %s", cfg["model_name"])
+                return
+
+        # Legacy TF-IDF
+        if tfidf_path.exists():
+            with open(tfidf_path, "rb") as f:
+                self.vectorizer = pickle.load(f)
+            self._vectorizer_type = "tfidf"
+            logger.info("  Loaded TF-IDF vectorizer")
 
     def _load_lp_config(self):
         with open(self._models_dir / "lp_config.json", "r") as f:
