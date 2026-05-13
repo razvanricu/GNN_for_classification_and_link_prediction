@@ -276,27 +276,33 @@ class InductiveService:
 
     def _nc_forward(self, model_name: str, model, X_extended: np.ndarray,
                     new_idx: int, text_vec: np.ndarray, extended_edges: tf.Tensor) -> np.ndarray:
-        """Run one NC model with neighbor injection."""
+        """Run one NC model with neighbor injection.
+
+        Uses direct model call (eager) instead of model.predict() to avoid
+        TF function tracing which caches the patched edge_index tensor.
+        """
 
         if model_name == "MLP":
-            preds = model.predict(text_vec.reshape(1, -1), verbose=0)
-            return preds[0]
+            preds = model(tf.constant(text_vec.reshape(1, -1), dtype=tf.float32), training=False)
+            return preds.numpy()[0]
+
+        X_tf = tf.constant(X_extended, dtype=tf.float32)
 
         if model_name == "GraphSAGE":
             sage_layer = next(l for l in model.layers if isinstance(l, StaticGraphSAGE))
             with self._patch_sage_edges(sage_layer, extended_edges):
-                preds = model.predict(X_extended, batch_size=X_extended.shape[0], verbose=0)
-            return preds[new_idx]
+                preds = model(X_tf, training=False)
+            return preds.numpy()[new_idx]
 
         if model_name == "GAT":
             with self._patch_gat_edges(model, extended_edges, is_lp=False):
-                preds = model.predict(X_extended, batch_size=X_extended.shape[0], verbose=0)
-            return preds[new_idx]
+                preds = model(X_tf, training=False)
+            return preds.numpy()[new_idx]
 
         if model_name == "GCN":
             with self._patch_gcn_graph_info(model, extended_edges, X_extended.shape[0], is_lp=False):
-                preds = model.predict(X_extended, batch_size=X_extended.shape[0], verbose=0)
-            return preds[new_idx]
+                preds = model(X_tf, training=False)
+            return preds.numpy()[new_idx]
 
         logger.warning("NC inductive: unknown model %s", model_name)
         return np.ones(self._registry.num_classes, dtype=np.float32) / self._registry.num_classes

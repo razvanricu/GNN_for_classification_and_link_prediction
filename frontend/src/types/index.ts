@@ -47,6 +47,7 @@ export interface CytoscapeNode {
     is_center?: boolean;
     is_new?: boolean;
     is_predicted_neighbor?: boolean;
+    is_fp_neighbor?: boolean;
   };
 }
 
@@ -54,7 +55,7 @@ export interface CytoscapeEdge {
   data: {
     source: string;
     target: string;
-    type: "real" | "predicted";
+    type: "real" | "predicted" | "tp" | "fp" | "fn";
     model?: string;
     score?: number;
   };

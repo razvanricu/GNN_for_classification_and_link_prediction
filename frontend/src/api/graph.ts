@@ -25,6 +25,18 @@ export async function fetchWithPredictedLinks(
   return data;
 }
 
+export async function fetchWithTpFpFn(
+  asin: string,
+  model = "GraphSAGE",
+  hops = 1,
+  maxNodes = 30
+): Promise<GraphData> {
+  const { data } = await api.get(`/graph/with-tp-fp-fn/${asin}`, {
+    params: { model, hops, max_nodes: maxNodes },
+  });
+  return data;
+}
+
 export async function fetchInductivePreview(
   title: string,
   description: string,

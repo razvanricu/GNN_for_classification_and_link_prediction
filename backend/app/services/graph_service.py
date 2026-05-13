@@ -26,18 +26,16 @@ class GraphService:
             self._adj_list = adj
         return self._adj_list
 
-    def k_hop_neighborhood(self, asin: str, hops: int = 2, max_nodes: int = 80) -> dict:
-        """BFS from given node, cap at max_nodes."""
+    def _bfs_raw(self, asin: str, hops: int = 2, max_nodes: int = 80):
+        """BFS from given node, return raw (visited, edges_set, center_idx)."""
         idx = self._registry.asin_to_idx.get(asin)
         if idx is None:
             raise KeyError(f"ASIN '{asin}' not found in graph")
 
         adj = self._get_adj_list()
 
-        # BFS
         visited = {idx}
         queue = deque([(idx, 0)])
-        edges_set = set()
 
         while queue and len(visited) < max_nodes:
             node, depth = queue.popleft()
@@ -48,14 +46,19 @@ class GraphService:
                     visited.add(neighbor)
                     queue.append((neighbor, depth + 1))
 
-        # Only include edges where both endpoints are in the visited set
+        edges_set = set()
         for node in visited:
             for neighbor in adj.get(node, []):
                 if neighbor in visited:
                     edge_key = (min(node, neighbor), max(node, neighbor))
                     edges_set.add(edge_key)
 
-        return self._build_cytoscape_graph(visited, edges_set, center_idx=idx)
+        return visited, edges_set, idx
+
+    def k_hop_neighborhood(self, asin: str, hops: int = 2, max_nodes: int = 80) -> dict:
+        """BFS from given node, cap at max_nodes."""
+        visited, edges_set, center_idx = self._bfs_raw(asin, hops, max_nodes)
+        return self._build_cytoscape_graph(visited, edges_set, center_idx=center_idx)
 
     def with_predicted_links(
         self, asin: str, model_name: str = "GraphSAGE", top_k: int = 5,
@@ -98,6 +101,71 @@ class GraphService:
             })
 
         return base_graph
+
+    def with_tp_fp_fn(
+        self, asin: str, model_name: str = "GraphSAGE",
+        hops: int = 1, max_nodes: int = 30
+    ) -> dict:
+        """Neighborhood graph with edges classified as TP, FP, or FN."""
+        from app.deps import get_lp_service
+        lp_service = get_lp_service()
+
+        visited, edges_set, center_idx = self._bfs_raw(asin, hops, max_nodes)
+        result = lp_service.score_neighborhood_edges(
+            model_name, center_idx, visited, edges_set
+        )
+
+        nodes = []
+        node_idx_set = set(visited)
+        for idx in visited:
+            node_asin = str(self._registry.node_names[idx])
+            class_name = self._registry.get_class_name(int(self._registry.y_full[idx]))
+            nodes.append({
+                "data": {
+                    "id": node_asin,
+                    "label": node_asin,
+                    "class": class_name,
+                    "is_center": idx == center_idx,
+                }
+            })
+
+        for fp in result["fp_edges"]:
+            dst = fp["dst_idx"]
+            if dst not in node_idx_set:
+                node_idx_set.add(dst)
+                fp_asin = str(self._registry.node_names[dst])
+                class_name = self._registry.get_class_name(
+                    int(self._registry.y_full[dst])
+                )
+                nodes.append({
+                    "data": {
+                        "id": fp_asin,
+                        "label": fp_asin,
+                        "class": class_name,
+                        "is_fp_neighbor": True,
+                    }
+                })
+
+        edges = []
+        for edge_type, edge_list in [
+            ("tp", result["tp_edges"]),
+            ("fn", result["fn_edges"]),
+            ("fp", result["fp_edges"]),
+        ]:
+            for e in edge_list:
+                src_asin = str(self._registry.node_names[e["src_idx"]])
+                dst_asin = str(self._registry.node_names[e["dst_idx"]])
+                edges.append({
+                    "data": {
+                        "source": src_asin,
+                        "target": dst_asin,
+                        "type": edge_type,
+                        "model": model_name,
+                        "score": e["score"],
+                    }
+                })
+
+        return {"nodes": nodes, "edges": edges}
 
     def inductive_subgraph(
         self, title: str, description: str, top_k: int = 5, model_name: str = "GraphSAGE"

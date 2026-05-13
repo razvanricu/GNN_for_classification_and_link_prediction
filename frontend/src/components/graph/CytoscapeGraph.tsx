@@ -94,6 +94,14 @@ export default function CytoscapeGraph({ graph, height = 500, onNodeClick }: Pro
           },
         },
         {
+          selector: "node[?is_fp_neighbor]",
+          style: {
+            "border-width": 2,
+            "border-color": "#e74c3c",
+            "border-style": "dashed",
+          },
+        },
+        {
           selector: "edge[type='real']",
           style: {
             "line-color": "#ccc",
@@ -106,6 +114,32 @@ export default function CytoscapeGraph({ graph, height = 500, onNodeClick }: Pro
           style: {
             "line-color": "#ff006e",
             "line-style": "dashed",
+            width: 2,
+            "curve-style": "bezier",
+          },
+        },
+        {
+          selector: "edge[type='tp']",
+          style: {
+            "line-color": "#2ecc71",
+            "line-style": "dashed",
+            width: 2,
+            "curve-style": "bezier",
+          },
+        },
+        {
+          selector: "edge[type='fp']",
+          style: {
+            "line-color": "#e74c3c",
+            "line-style": "dashed",
+            width: 2,
+            "curve-style": "bezier",
+          },
+        },
+        {
+          selector: "edge[type='fn']",
+          style: {
+            "line-color": "#e67e22",
             width: 2,
             "curve-style": "bezier",
           },

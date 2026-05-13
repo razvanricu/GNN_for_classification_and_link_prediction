@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchProduct, fetchNodePredictions, fetchLinkSuggestions } from "../api/products";
-import { fetchWithPredictedLinks } from "../api/graph";
+import { fetchWithTpFpFn } from "../api/graph";
 import NCResultCard from "../components/predictions/NCResultCard";
 import LPResultTable from "../components/predictions/LPResultTable";
 import CytoscapeGraph from "../components/graph/CytoscapeGraph";
@@ -31,8 +31,8 @@ export default function ProductDetail() {
   });
 
   const { data: graphData } = useQuery({
-    queryKey: ["graph", asin, graphModel],
-    queryFn: () => fetchWithPredictedLinks(asin!, graphModel, 5, 1, 30),
+    queryKey: ["graph-tpfpfn", asin, graphModel],
+    queryFn: () => fetchWithTpFpFn(asin!, graphModel, 1, 30),
     enabled: !!asin,
   });
 
@@ -90,7 +90,7 @@ export default function ProductDetail() {
       {/* Graph */}
       <div className="bg-white rounded-lg shadow p-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold">Graph Neighborhood + Predicted Links</h2>
+          <h2 className="text-lg font-semibold">Graph Neighborhood — Model Evaluation</h2>
           <select
             value={graphModel}
             onChange={(e) => setGraphModel(e.target.value)}
@@ -112,10 +112,13 @@ export default function ProductDetail() {
         )}
         <div className="flex gap-4 mt-2 text-xs text-gray-500">
           <span className="flex items-center gap-1">
-            <span className="inline-block w-4 h-0.5 bg-gray-300" /> Real edge
+            <span className="inline-block w-4 h-0.5" style={{ borderTop: "2px dashed #2ecc71" }} /> True Positive
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block w-4 h-0.5 bg-pink-500 border-dashed" style={{ borderTop: "2px dashed #ff006e" }} /> Predicted edge
+            <span className="inline-block w-4 h-0.5" style={{ borderTop: "2px dashed #e74c3c" }} /> False Positive
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-4 h-0.5 bg-orange-500" /> False Negative
           </span>
         </div>
       </div>
