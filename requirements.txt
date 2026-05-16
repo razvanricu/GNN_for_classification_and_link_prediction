@@ -1,0 +1,14 @@
+numpy
+scipy
+pandas
+matplotlib
+seaborn
+networkx
+scikit-learn
+torch
+torch-geometric
+tensorflow
+keras
+keras-tuner
+ipykernel
+jupyter
