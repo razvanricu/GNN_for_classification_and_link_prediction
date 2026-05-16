@@ -1,0 +1,22 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - MODELS_DIR=./saved_models
+      - PRECOMPUTED_DIR=./precomputed
+      - CATALOG_DB_PATH=./catalog.duckdb
+      - CORS_ORIGINS=["http://localhost", "http://localhost:3000", "http://localhost:5173"]
+      - HF_HUB_OFFLINE=1
+      - CUDA_VISIBLE_DEVICES=-1
+      - TF_CPP_MIN_LOG_LEVEL=2
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

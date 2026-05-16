@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 K_NEIGHBORS = 10
 
 # Domain detection thresholds
-SBERT_DOMAIN_THRESHOLD = 0.30      # SBERT cosine sims are higher for in-domain
+SBERT_DOMAIN_THRESHOLD = 0.30      # mean cosine sim of top-K neighbors
 TFIDF_MIN_WORDS = 5                # minimum non-zero TF-IDF features
 TFIDF_DOMAIN_THRESHOLD = 0.10      # cosine sim threshold for TF-IDF
 
@@ -59,11 +59,11 @@ class InductiveService:
         text_vec = self.vectorize_text(title, description)
 
         # Compute neighbors once
-        neighbor_indices, all_similarities, max_sim = self._find_pseudo_neighbors(
+        neighbor_indices, all_similarities, max_sim, mean_sim = self._find_pseudo_neighbors(
             text_vec, k=K_NEIGHBORS
         )
 
-        warning = self._check_domain(text_vec, max_sim)
+        warning = self._check_domain(text_vec, max_sim, mean_sim)
 
         # Pre-cache LP embeddings BEFORE NC pass (NC patches shared graph_info)
         for model_name in self._registry.lp_models:
@@ -77,11 +77,11 @@ class InductiveService:
         return result
 
     def predict_nc_inductive(self, text_vec: np.ndarray) -> Dict[str, dict]:
-        neighbor_indices, _, _ = self._find_pseudo_neighbors(text_vec, k=K_NEIGHBORS)
+        neighbor_indices, _, _, _ = self._find_pseudo_neighbors(text_vec, k=K_NEIGHBORS)
         return self._run_nc(text_vec, neighbor_indices)
 
     def predict_lp_inductive(self, text_vec: np.ndarray, top_k: int = 10) -> Dict[str, List[dict]]:
-        neighbor_indices, all_similarities, _ = self._find_pseudo_neighbors(
+        neighbor_indices, all_similarities, _, _ = self._find_pseudo_neighbors(
             text_vec, k=K_NEIGHBORS
         )
         # Pre-cache LP embeddings before any graph_info patching
@@ -91,13 +91,13 @@ class InductiveService:
 
     # ── domain check ──────────────────────────────────────────────────────────
 
-    def _check_domain(self, text_vec: np.ndarray, max_sim: float) -> Optional[str]:
+    def _check_domain(self, text_vec: np.ndarray, max_sim: float, mean_sim: float) -> Optional[str]:
         if self._registry._vectorizer_type == "sbert":
-            # SBERT: all embeddings are dense, use cosine similarity only
-            if max_sim < SBERT_DOMAIN_THRESHOLD:
+            # SBERT: use mean similarity of top-K neighbors (more robust than max)
+            if mean_sim < SBERT_DOMAIN_THRESHOLD:
                 return (
                     f"This product has low similarity to electronics products "
-                    f"(max cosine similarity: {max_sim:.3f}). "
+                    f"(mean top-{K_NEIGHBORS} cosine similarity: {mean_sim:.3f}). "
                     "Predictions may be unreliable."
                 )
         else:
@@ -184,13 +184,14 @@ class InductiveService:
         query_norm = np.linalg.norm(text_vec)
         if query_norm < 1e-8:
             random_idx = np.random.choice(self._registry.num_nodes, size=k, replace=False)
-            return random_idx, np.zeros(self._registry.num_nodes), 0.0
+            return random_idx, np.zeros(self._registry.num_nodes), 0.0, 0.0
 
         query_normalized = text_vec.flatten() / query_norm
         similarities = self._X_full_normalized @ query_normalized
         top_indices = np.argsort(similarities)[::-1][:k]
         max_similarity = float(similarities[top_indices[0]])
-        return top_indices, similarities, max_similarity
+        mean_top_k_sim = float(np.mean(similarities[top_indices]))
+        return top_indices, similarities, max_similarity, mean_top_k_sim
 
     def _build_extended_edges(self, neighbor_indices: np.ndarray, new_node_idx: int) -> tf.Tensor:
         """Build (2, 2*k) tensor of bidirectional edges to pseudo-neighbors."""
@@ -335,12 +336,7 @@ class InductiveService:
 
     def _lp_scores(self, model_name: str, model, X_extended: np.ndarray,
                    new_idx: int, text_vec: np.ndarray, extended_edges: tf.Tensor) -> np.ndarray:
-        """Return (num_existing_nodes,) sigmoid-score array.
-
-        For GNN models (GraphSAGE, GAT, GCN), we avoid passing X_extended
-        through the encoder (TF tracing caches input shape, causing crashes).
-        Instead: use cached embeddings + neighbor-mean approximation.
-        """
+        """Return (num_existing_nodes,) sigmoid-score array."""
 
         if model_name == "MLP":
             existing_emb = self._get_lp_embeddings(model_name)
@@ -353,11 +349,24 @@ class InductiveService:
             scores = np.dot(existing_emb, new_emb)
             return 1.0 / (1.0 + np.exp(-scores))
 
-        # For GNN LP models: use cached embeddings + neighbor-mean approximation
-        if model_name in ("GraphSAGE", "GAT", "GCN"):
+        if model_name == "GraphSAGE":
+            # SAGE is inductive: run encoder on X_extended (N+1 features) with patched edges.
+            # Use direct eager call (not model.predict) to avoid TF tracing caching input shape.
+            X_tf = tf.constant(X_extended, dtype=tf.float32)
+            with self._patch_sage_edges(model.encoder, extended_edges):
+                all_emb = model.encoder(X_tf, training=False).numpy()
+            new_emb = all_emb[new_idx]
+            new_emb = new_emb / (np.linalg.norm(new_emb) + 1e-9)
+            existing_emb = all_emb[:new_idx]
+            existing_emb = existing_emb / (np.linalg.norm(existing_emb, axis=1, keepdims=True) + 1e-9)
+            scores = np.dot(existing_emb, new_emb)
+            return 1.0 / (1.0 + np.exp(-scores))
+
+        # GCN and GAT are transductive: use cached embeddings + neighbor-mean approximation
+        # (their LP encoders have graph structure baked into normalization coefficients)
+        if model_name in ("GAT", "GCN"):
             existing_emb = self._get_lp_embeddings(model_name)
-            # Approximate new node embedding as mean of pseudo-neighbors
-            neighbor_indices = extended_edges[1, :K_NEIGHBORS].numpy()  # first K are new->neighbor
+            neighbor_indices = extended_edges[1, :K_NEIGHBORS].numpy()
             new_emb = np.mean(existing_emb[neighbor_indices], axis=0)
             new_emb = new_emb / (np.linalg.norm(new_emb) + 1e-9)
             existing_emb_normed = existing_emb / (np.linalg.norm(existing_emb, axis=1, keepdims=True) + 1e-9)
