@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchProduct, fetchNodePredictions, fetchLinkSuggestions } from "../api/products";
 import { fetchWithTpFpFn } from "../api/graph";
+import { fetchNCExplanation } from "../api/explainer";
 import NCResultCard from "../components/predictions/NCResultCard";
 import LPResultTable from "../components/predictions/LPResultTable";
 import CytoscapeGraph from "../components/graph/CytoscapeGraph";
@@ -11,6 +12,8 @@ export default function ProductDetail() {
   const { asin } = useParams<{ asin: string }>();
   const navigate = useNavigate();
   const [graphModel, setGraphModel] = useState("GraphSAGE");
+  const [explainModel, setExplainModel] = useState("GraphSAGE");
+  const [explainEnabled, setExplainEnabled] = useState(false);
 
   const { data: product } = useQuery({
     queryKey: ["product", asin],
@@ -34,6 +37,12 @@ export default function ProductDetail() {
     queryKey: ["graph-tpfpfn", asin, graphModel],
     queryFn: () => fetchWithTpFpFn(asin!, graphModel, 1, 30),
     enabled: !!asin,
+  });
+
+  const { data: explainData, isFetching: explainLoading } = useQuery({
+    queryKey: ["explain-nc", asin, explainModel],
+    queryFn: () => fetchNCExplanation(asin!, explainModel),
+    enabled: !!asin && explainEnabled,
   });
 
   if (!asin) return null;
@@ -121,6 +130,69 @@ export default function ProductDetail() {
             <span className="inline-block w-4 h-0.5 bg-orange-500" /> False Negative
           </span>
         </div>
+      </div>
+
+      {/* GNNExplainer */}
+      <div className="bg-white rounded-lg shadow p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">GNNExplainer — Edge Importance</h2>
+          <div className="flex items-center gap-2">
+            <select
+              value={explainModel}
+              onChange={(e) => setExplainModel(e.target.value)}
+              className="text-sm border rounded px-2 py-1"
+            >
+              {["GraphSAGE", "GCN", "GAT"].map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => setExplainEnabled(true)}
+              disabled={explainLoading}
+              className="px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+            >
+              {explainLoading ? "Computing..." : "Explain Prediction"}
+            </button>
+          </div>
+        </div>
+
+        {explainLoading && (
+          <div className="py-8 text-center text-sm text-gray-500">
+            Optimizing edge mask (~3s)...
+          </div>
+        )}
+
+        {explainData && !explainLoading && (
+          <>
+            <div className="mb-3 flex gap-4 text-sm">
+              <span>
+                Predicted: <strong className="text-purple-700">{explainData.predicted_label}</strong>
+              </span>
+              <span>
+                Confidence: <strong>{(explainData.confidence * 100).toFixed(1)}%</strong>
+              </span>
+            </div>
+            <CytoscapeGraph
+              graph={explainData.graph}
+              height={400}
+              onNodeClick={(a) => navigate(`/product/${a}`)}
+            />
+            <div className="flex gap-4 mt-2 text-xs text-gray-500">
+              <span className="flex items-center gap-1">
+                <span className="inline-block w-4 h-1 bg-purple-600 rounded opacity-100" /> High importance
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block w-4 h-0.5 bg-purple-600 rounded opacity-30" /> Low importance
+              </span>
+            </div>
+          </>
+        )}
+
+        {!explainEnabled && !explainData && (
+          <p className="text-sm text-gray-400 py-4 text-center">
+            Click "Explain Prediction" to see which edges contribute most to the GNN's classification.
+          </p>
+        )}
       </div>
     </div>
   );

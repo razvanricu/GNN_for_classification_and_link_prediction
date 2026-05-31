@@ -1,4 +1,5 @@
 import logging
+import threading
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -14,16 +15,24 @@ class CatalogService:
 
     def __init__(self, db_path: str):
         self._db_path = db_path
-        self._conn = None
-        self._connect()
-
-    def _connect(self):
-        path = Path(self._db_path)
+        self._local = threading.local()
+        path = Path(db_path)
         if path.exists():
-            self._conn = duckdb.connect(str(path), read_only=True)
-            logger.info(f"Connected to catalog DB: {path}")
+            self._valid = True
+            logger.info(f"Catalog DB found: {path}")
         else:
+            self._valid = False
             logger.warning(f"Catalog DB not found: {path} — catalog endpoints will fail")
+
+    @property
+    def _conn(self):
+        if not self._valid:
+            return None
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = duckdb.connect(str(self._db_path), read_only=True)
+            self._local.conn = conn
+        return conn
 
     def search(self, query: CatalogQuery) -> Tuple[List[dict], int]:
         """Search and paginate products."""
@@ -121,5 +130,7 @@ class CatalogService:
         }
 
     def close(self):
-        if self._conn:
-            self._conn.close()
+        conn = getattr(self._local, "conn", None)
+        if conn:
+            conn.close()
+            self._local.conn = None

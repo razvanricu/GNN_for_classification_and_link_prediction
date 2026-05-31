@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { predictFull } from "../api/predict";
 import { fetchInductivePreview } from "../api/graph";
+import { fetchInductiveNCExplanation } from "../api/explainer";
+import type { NCExplainResponse } from "../api/explainer";
 import NCResultCard from "../components/predictions/NCResultCard";
 import LPResultTable from "../components/predictions/LPResultTable";
 import CytoscapeGraph from "../components/graph/CytoscapeGraph";
@@ -16,6 +18,10 @@ export default function InductiveDemo() {
   const [result, setResult] = useState<FullPrediction | null>(null);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
 
+  const [explainModel, setExplainModel] = useState("GraphSAGE");
+  const [explainData, setExplainData] = useState<NCExplainResponse | null>(null);
+  const [explainLoading, setExplainLoading] = useState(false);
+
   const predict = useMutation({
     mutationFn: async () => {
       const [pred, graph] = await Promise.all([
@@ -27,6 +33,7 @@ export default function InductiveDemo() {
     onSuccess: ({ pred, graph }) => {
       setResult(pred);
       setGraphData(graph);
+      setExplainData(null);
     },
   });
 
@@ -34,6 +41,19 @@ export default function InductiveDemo() {
     e.preventDefault();
     if (title.trim() && description.trim()) {
       predict.mutate();
+    }
+  };
+
+  const handleExplain = async () => {
+    if (!title.trim() || !description.trim()) return;
+    setExplainLoading(true);
+    try {
+      const data = await fetchInductiveNCExplanation(title, description, explainModel);
+      setExplainData(data);
+    } catch (e) {
+      console.error("Explanation failed:", e);
+    } finally {
+      setExplainLoading(false);
     }
   };
 
@@ -99,11 +119,6 @@ export default function InductiveDemo() {
       {/* Results */}
       {result && (
         <div className="space-y-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
-            <strong>Note:</strong> GraphSAGE performs true inductive inference (lower confidence is expected
-            since the new node has no graph neighbors). GCN/GAT cannot process new nodes and fall back to
-            the MLP baseline.
-          </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white rounded-lg shadow p-4">
             <h2 className="text-lg font-semibold mb-3">Node Classification</h2>
@@ -146,6 +161,74 @@ export default function InductiveDemo() {
           </p>
         </div>
       ) : null}
+
+      {/* GNNExplainer for Inductive */}
+      {result && (
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold">GNNExplainer — Inductive Edge Importance</h2>
+            <div className="flex items-center gap-2">
+              <select
+                value={explainModel}
+                onChange={(e) => { setExplainModel(e.target.value); setExplainData(null); }}
+                className="text-sm border rounded px-2 py-1"
+              >
+                {["GraphSAGE", "GCN", "GAT"].map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+              <button
+                onClick={handleExplain}
+                disabled={explainLoading}
+                className="px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+              >
+                {explainLoading ? "Computing..." : "Explain Prediction"}
+              </button>
+            </div>
+          </div>
+
+          {explainLoading && (
+            <div className="py-8 text-center text-sm text-gray-500">
+              Optimizing edge mask (~3-5s)...
+            </div>
+          )}
+
+          {explainData && !explainLoading && (
+            <>
+              <div className="mb-3 flex gap-4 text-sm">
+                <span>
+                  Predicted: <strong className="text-purple-700">{explainData.predicted_label}</strong>
+                </span>
+                <span>
+                  Confidence: <strong>{(explainData.confidence * 100).toFixed(1)}%</strong>
+                </span>
+              </div>
+              <CytoscapeGraph
+                graph={explainData.graph}
+                height={400}
+                onNodeClick={(a) => { if (a !== "__new__") navigate(`/product/${a}`); }}
+              />
+              <div className="flex gap-4 mt-2 text-xs text-gray-500">
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-4 h-1 bg-purple-600 rounded opacity-100" /> High importance
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-4 h-0.5 bg-purple-600 rounded opacity-30" /> Low importance
+                </span>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                Shows which pseudo-neighbor edges contribute most to the GNN's classification of the new product.
+              </p>
+            </>
+          )}
+
+          {!explainData && !explainLoading && (
+            <p className="text-sm text-gray-400 py-4 text-center">
+              Click "Explain Prediction" to see which edges in the pseudo-neighborhood contribute most to classification.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

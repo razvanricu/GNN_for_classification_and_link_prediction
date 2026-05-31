@@ -17,12 +17,12 @@ logger = logging.getLogger(__name__)
 K_NEIGHBORS = 10
 
 # Domain detection thresholds
-SBERT_DOMAIN_THRESHOLD = 0.30      # mean cosine sim of top-K neighbors
+SBERT_DOMAIN_THRESHOLD = 0.45      # mean cosine sim of top-K neighbors
 TFIDF_MIN_WORDS = 5                # minimum non-zero TF-IDF features
 TFIDF_DOMAIN_THRESHOLD = 0.10      # cosine sim threshold for TF-IDF
 
 # LP cosine similarity gate (minimum to predict a link as real)
-SBERT_LP_COS_GATE = 0.30
+SBERT_LP_COS_GATE = 0.40
 TFIDF_LP_COS_GATE = 0.10
 
 
@@ -350,8 +350,6 @@ class InductiveService:
             return 1.0 / (1.0 + np.exp(-scores))
 
         if model_name == "GraphSAGE":
-            # SAGE is inductive: run encoder on X_extended (N+1 features) with patched edges.
-            # Use direct eager call (not model.predict) to avoid TF tracing caching input shape.
             X_tf = tf.constant(X_extended, dtype=tf.float32)
             with self._patch_sage_edges(model.encoder, extended_edges):
                 all_emb = model.encoder(X_tf, training=False).numpy()
@@ -362,8 +360,6 @@ class InductiveService:
             scores = np.dot(existing_emb, new_emb)
             return 1.0 / (1.0 + np.exp(-scores))
 
-        # GCN and GAT are transductive: use cached embeddings + neighbor-mean approximation
-        # (their LP encoders have graph structure baked into normalization coefficients)
         if model_name in ("GAT", "GCN"):
             existing_emb = self._get_lp_embeddings(model_name)
             neighbor_indices = extended_edges[1, :K_NEIGHBORS].numpy()

@@ -171,12 +171,12 @@ class GraphService:
         self, title: str, description: str, top_k: int = 5, model_name: str = "GraphSAGE"
     ) -> dict:
         """New node in center + predicted neighbors via LP model.
-        Only includes links above the model's threshold (predicted_link=True).
+        Fetches a larger candidate pool, filters to predicted_link=True, shows top-k.
         """
         from app.deps import get_inductive_service
         inductive = get_inductive_service()
         text_vec = inductive.vectorize_text(title, description)
-        lp_results = inductive.predict_lp_inductive(text_vec, top_k)
+        lp_results = inductive.predict_lp_inductive(text_vec, top_k=50)
 
         nodes = [{
             "data": {
@@ -190,9 +190,8 @@ class GraphService:
         edges = []
 
         model_suggestions = lp_results.get(model_name, [])
-        for suggestion in model_suggestions:
-            if not suggestion["predicted_link"]:
-                continue
+        yes_links = [s for s in model_suggestions if s["predicted_link"]][:top_k]
+        for suggestion in yes_links:
             target_asin = suggestion["asin"]
             nodes.append({
                 "data": {

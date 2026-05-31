@@ -62,15 +62,24 @@ class LPService:
         num_nodes = self._registry.num_nodes
         thresholds = self._registry.lp_config.get("thresholds", {})
 
+        COSINE_GATE = 0.40
+
         results = {}
         for model_name in self._registry.lp_models:
             embeddings = self._get_embeddings(model_name)
             node_emb = embeddings[idx]
 
+            # Cosine gate: zero out embedding-distant nodes before scoring
+            norms = np.linalg.norm(embeddings, axis=1) * np.linalg.norm(node_emb) + 1e-9
+            cos_sim = np.dot(embeddings, node_emb) / norms
+
             # Dot product with all nodes
             scores = np.dot(embeddings, node_emb)
             # Apply sigmoid
             scores = 1.0 / (1.0 + np.exp(-scores))
+
+            # Gate: discard candidates below cosine threshold
+            scores[cos_sim < COSINE_GATE] = 0.0
 
             top_indices = top_k_indices(scores, k, exclude)
             threshold = thresholds.get(model_name, 0.5)

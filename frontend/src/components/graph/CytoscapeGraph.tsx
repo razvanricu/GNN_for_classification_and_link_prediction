@@ -144,6 +144,24 @@ export default function CytoscapeGraph({ graph, height = 500, onNodeClick }: Pro
             "curve-style": "bezier",
           },
         },
+        {
+          selector: "edge[type='explained']",
+          style: {
+            "line-color": "#8b5cf6",
+            width: "mapData(importance, 0, 1, 1, 8)",
+            opacity: "mapData(importance, 0, 1, 0.3, 1)",
+            "curve-style": "bezier",
+          },
+        },
+        {
+          selector: "node[importance]",
+          style: {
+            width: "mapData(importance, 0, 1, 15, 40)",
+            height: "mapData(importance, 0, 1, 15, 40)",
+            "border-width": 2,
+            "border-color": "#8b5cf6",
+          },
+        },
       ],
       layout: {
         name: "concentric",

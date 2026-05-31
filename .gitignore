@@ -1,0 +1,27 @@
+# SBERT model binary (418 MB — too large for GitHub)
+backend/saved_models/sbert_model/model.safetensors
+
+# Python cache
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
+# Keras tuner directories
+tuner_*/
+tuning_*/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Env
+.env
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
