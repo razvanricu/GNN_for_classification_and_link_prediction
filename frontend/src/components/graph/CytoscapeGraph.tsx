@@ -149,7 +149,7 @@ export default function CytoscapeGraph({ graph, height = 500, onNodeClick }: Pro
           style: {
             "line-color": "#8b5cf6",
             width: "mapData(importance, 0, 1, 1, 8)",
-            opacity: "mapData(importance, 0, 1, 0.3, 1)",
+            opacity: "mapData(importance, 0, 1, 0.3, 1)" as unknown as number,
             "curve-style": "bezier",
           },
         },

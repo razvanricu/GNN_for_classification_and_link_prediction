@@ -47,7 +47,7 @@ export default function LPResultTable({ results, onAsinClick }: Props) {
               <th className="text-left py-2 px-2 font-medium text-gray-500">ASIN</th>
               <th className="text-left py-2 px-2 font-medium text-gray-500">Class</th>
               <th className="text-right py-2 px-2 font-medium text-gray-500">Score</th>
-              <th className="text-center py-2 px-2 font-medium text-gray-500">Link?</th>
+              <th className="text-center py-2 px-2 font-medium text-gray-500">Recommended?</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
@@ -62,7 +62,7 @@ export default function LPResultTable({ results, onAsinClick }: Props) {
                 </td>
                 <td className="py-1.5 px-2 text-gray-600">{s.target_class}</td>
                 <td className="py-1.5 px-2 text-right font-medium">
-                  {(s.score * 100).toFixed(1)}%
+                  {(s.score * 100).toFixed(2)}%
                 </td>
                 <td className="py-1.5 px-2 text-center">
                   {s.predicted_link ? (

@@ -349,25 +349,31 @@ class InductiveService:
             scores = np.dot(existing_emb, new_emb)
             return 1.0 / (1.0 + np.exp(-scores))
 
-        if model_name == "GraphSAGE":
-            X_tf = tf.constant(X_extended, dtype=tf.float32)
-            with self._patch_sage_edges(model.encoder, extended_edges):
-                all_emb = model.encoder(X_tf, training=False).numpy()
-            new_emb = all_emb[new_idx]
-            new_emb = new_emb / (np.linalg.norm(new_emb) + 1e-9)
-            existing_emb = all_emb[:new_idx]
-            existing_emb = existing_emb / (np.linalg.norm(existing_emb, axis=1, keepdims=True) + 1e-9)
-            scores = np.dot(existing_emb, new_emb)
-            return 1.0 / (1.0 + np.exp(-scores))
+        X_tf = tf.constant(X_extended, dtype=tf.float32)
 
-        if model_name in ("GAT", "GCN"):
-            existing_emb = self._get_lp_embeddings(model_name)
-            neighbor_indices = extended_edges[1, :K_NEIGHBORS].numpy()
-            new_emb = np.mean(existing_emb[neighbor_indices], axis=0)
-            new_emb = new_emb / (np.linalg.norm(new_emb) + 1e-9)
-            existing_emb_normed = existing_emb / (np.linalg.norm(existing_emb, axis=1, keepdims=True) + 1e-9)
-            scores = np.dot(existing_emb_normed, new_emb)
-            return 1.0 / (1.0 + np.exp(-scores))
+        orig_node_features = model.node_features
+        model.node_features = X_tf
+        try:
+            if model_name == "GraphSAGE":
+                with self._patch_sage_edges(model.encoder, extended_edges):
+                    all_emb = model.get_embeddings(training=False).numpy()
+            elif model_name == "GAT":
+                with self._patch_gat_edges(model, extended_edges, is_lp=True):
+                    all_emb = model.get_embeddings(training=False).numpy()
+            elif model_name == "GCN":
+                with self._patch_gcn_graph_info(
+                    model, extended_edges, X_extended.shape[0], is_lp=True
+                ):
+                    all_emb = model.get_embeddings(training=False).numpy()
+            else:
+                logger.warning("LP inductive: unknown model %s", model_name)
+                return np.full(self._registry.num_nodes, 0.5)
+        finally:
+            model.node_features = orig_node_features
 
-        logger.warning("LP inductive: unknown model %s", model_name)
-        return np.full(self._registry.num_nodes, 0.5)
+        new_emb = all_emb[new_idx]
+        new_emb = new_emb / (np.linalg.norm(new_emb) + 1e-9)
+        existing_emb = all_emb[:new_idx]
+        existing_emb = existing_emb / (np.linalg.norm(existing_emb, axis=1, keepdims=True) + 1e-9)
+        scores = np.dot(existing_emb, new_emb)
+        return 1.0 / (1.0 + np.exp(-scores))

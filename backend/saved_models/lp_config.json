@@ -1,9 +1,9 @@
 {
   "thresholds": {
-    "GraphSAGE": 0.6400381326675415,
-    "MLP": 0.5558221936225891,
-    "GCN": 0.6885126233100891,
-    "GAT": 0.669435441493988
+    "GraphSAGE": 0.6404056549072266,
+    "MLP": 0.5180703997612,
+    "GCN": 0.7066687941551208,
+    "GAT": 0.6970635056495667
   },
   "num_features": 768,
   "num_classes": 16,
@@ -29,7 +29,7 @@
   "hp": {
     "gcn_nc": {
       "out_feat": 64,
-      "dropout": 0.2
+      "dropout": 0.30000000000000004
     },
     "gat_nc": {
       "num_heads": 8,
@@ -49,7 +49,7 @@
     },
     "sage_lp": {
       "out_feat": 128,
-      "dropout": 0.0
+      "dropout": 0.2
     },
     "mlp_lp": {
       "hidden_dim": 128,
@@ -60,9 +60,9 @@
       "dropout": 0.0
     },
     "gat_lp": {
-      "num_heads": 8,
+      "num_heads": 4,
       "out_feat": 32,
-      "dropout": 0.2
+      "dropout": 0.4
     }
   }
 }

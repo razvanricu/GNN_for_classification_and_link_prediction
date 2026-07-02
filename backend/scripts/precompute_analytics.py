@@ -107,14 +107,7 @@ def main():
     rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
     rf.fit(X_train, y_train)
 
-    importances = rf.feature_importances_
-    top_indices = np.argsort(importances)[::-1][:20]
-    words = vectorizer.get_feature_names_out()
-
-    feature_imp = [
-        {"word": words[idx], "importance": float(importances[idx])}
-        for idx in top_indices
-    ]
+    feature_imp = []
     with open(output_dir / "feature_importance.json", "w") as f:
         json.dump(feature_imp, f, indent=2)
 

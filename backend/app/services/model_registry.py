@@ -259,7 +259,7 @@ class ModelRegistry:
         num_heads = hp["num_heads"]
         out_feat  = hp["out_feat"]
         dropout   = hp["dropout"]
-        ei        = self.edge_index_no_loops_tf
+        ei        = self.edge_index_tf
 
         model = keras.Sequential([
             layers.InputLayer(input_shape=(n_feat,)),
@@ -340,7 +340,7 @@ class ModelRegistry:
             num_heads      = hp["num_heads"],
             out_feat       = hp["out_feat"],
             node_features  = self.X_full,
-            edge_index_msg = self.edge_index_no_loops_tf,
+            edge_index_msg = self.edge_index_tf,
             dropout_rate   = hp["dropout"],
         )
 

@@ -23,6 +23,7 @@ class GraphSAGELinkPredictor(keras.Model):
             edge_index=edge_index_msg,
             dropout_rate=dropout_rate,
             normalize=normalize,
+            final_activation=None,
         )
 
     def call(self, query_edges, training=None):

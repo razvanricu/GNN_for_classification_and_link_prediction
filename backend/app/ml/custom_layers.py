@@ -234,17 +234,24 @@ class SAGEConvLayer(layers.Layer):
 
 
 class StaticGraphSAGE(layers.Layer):
-    """Two-layer GraphSAGE with dropout."""
+    """Two-layer GraphSAGE with dropout.
 
-    def __init__(self, out_feat, edge_index, dropout_rate=0.0, normalize=True, **kwargs):
+    `final_activation=None` (used by LP) gives signed embeddings whose
+    dot-product spans [-1, 1] after L2-norm, avoiding the sigmoid cap at 0.5
+    caused by ReLU on the last layer. Default `"relu"` preserves NC behavior.
+    """
+
+    def __init__(self, out_feat, edge_index, dropout_rate=0.0, normalize=True,
+                 final_activation="relu", **kwargs):
         super().__init__(**kwargs)
         self.out_feat_val = out_feat
         self.edge_index_val = edge_index
         self.dropout_rate_val = dropout_rate
         self.normalize_val = normalize
+        self.final_activation_val = final_activation
 
-        self.conv1 = SAGEConvLayer(out_feat, edge_index, normalize=normalize, activation="relu")
-        self.conv2 = SAGEConvLayer(out_feat, edge_index, normalize=normalize, activation="relu")
+        self.conv1 = SAGEConvLayer(out_feat, edge_index, normalize=False, activation="relu")
+        self.conv2 = SAGEConvLayer(out_feat, edge_index, normalize=normalize, activation=final_activation)
 
         self.drop1 = layers.Dropout(dropout_rate)
         self.drop2 = layers.Dropout(dropout_rate)
@@ -263,5 +270,6 @@ class StaticGraphSAGE(layers.Layer):
             "edge_index": self.edge_index_val,
             "dropout_rate": self.dropout_rate_val,
             "normalize": self.normalize_val,
+            "final_activation": self.final_activation_val,
         })
         return config
