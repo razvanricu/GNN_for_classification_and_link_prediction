@@ -78,11 +78,6 @@ export interface DegreeDistribution {
   counts: number[];
 }
 
-export interface FeatureImportance {
-  word: string;
-  importance: number;
-}
-
 export interface TSNEData {
   x: number[];
   y: number[];

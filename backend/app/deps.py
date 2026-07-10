@@ -9,7 +9,6 @@ from app.services.graph_service import GraphService
 from app.services.analytics_service import AnalyticsService
 from app.services.inductive_service import InductiveService
 from app.services.explainer_service import ExplainerService
-from app.utils.ws_manager import ConnectionManager
 
 
 @lru_cache()
@@ -53,7 +52,3 @@ def get_inductive_service() -> InductiveService:
 def get_explainer_service() -> ExplainerService:
     return ExplainerService(get_model_registry())
 
-
-@lru_cache()
-def get_ws_manager() -> ConnectionManager:
-    return ConnectionManager()

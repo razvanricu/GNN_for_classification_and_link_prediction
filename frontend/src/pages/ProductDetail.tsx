@@ -99,7 +99,7 @@ export default function ProductDetail() {
       {/* Graph */}
       <div className="bg-white rounded-lg shadow p-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold">Graph Neighborhood — Model Evaluation</h2>
+          <h2 className="text-lg font-semibold">Graph Neighborhood - Model Evaluation</h2>
           <select
             value={graphModel}
             onChange={(e) => setGraphModel(e.target.value)}
@@ -135,7 +135,7 @@ export default function ProductDetail() {
       {/* GNNExplainer */}
       <div className="bg-white rounded-lg shadow p-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold">GNNExplainer — Edge Importance</h2>
+          <h2 className="text-lg font-semibold">GNNExplainer - Edge Importance</h2>
           <div className="flex items-center gap-2">
             <select
               value={explainModel}
@@ -158,7 +158,7 @@ export default function ProductDetail() {
 
         {explainLoading && (
           <div className="py-8 text-center text-sm text-gray-500">
-            Optimizing edge mask (~3s)...
+            Optimizing edge mask...
           </div>
         )}
 

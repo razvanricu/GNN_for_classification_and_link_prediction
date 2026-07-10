@@ -13,7 +13,7 @@ class CytoscapeNodeData(BaseModel):
 class CytoscapeEdgeData(BaseModel):
     source: str
     target: str
-    type: str  # "real" or "predicted"
+    type: str  # real or predicted
     model: Optional[str] = None
     score: Optional[float] = None
 

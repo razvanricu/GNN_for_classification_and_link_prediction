@@ -44,7 +44,7 @@ class ModelRegistry:
         self.class_names: Optional[list] = None
         self.asin_to_idx: Optional[Dict[str, int]] = None
         self.vectorizer = None
-        self._vectorizer_type: str = "tfidf"  # "tfidf" or "sbert"
+        self._vectorizer_type: str = "tfidf" 
         self.lp_config: Optional[dict] = None
 
         # Graph objects used by layers
@@ -55,7 +55,6 @@ class ModelRegistry:
         self.nc_models: Dict[str, keras.Model] = {}
         self.lp_models: Dict[str, keras.Model] = {}
 
-    # ── public ────────────────────────────────────────────────────────────────
 
     def warmup(self):
         if self._loaded:
@@ -64,7 +63,7 @@ class ModelRegistry:
         logger.info("Loading graph data...")
         self._load_graph_data()
 
-        logger.info("Loading TF-IDF vectorizer...")
+        logger.info("Loading Sbert vectorizer...")
         self._load_vectorizer()
 
         logger.info("Loading LP config...")
@@ -105,7 +104,6 @@ class ModelRegistry:
     def is_loaded(self) -> bool:
         return self._loaded
 
-    # ── data loading ──────────────────────────────────────────────────────────
 
     def _load_graph_data(self):
         path = self._models_dir / "graph_data.npz"
@@ -145,9 +143,7 @@ class ModelRegistry:
         )
 
     def _load_vectorizer(self):
-        # Try SBERT config first, fall back to TF-IDF pickle
         sbert_path = self._models_dir / "encoder_config.pkl"
-        tfidf_path = self._models_dir / "tfidf_vectorizer.pkl"
 
         if sbert_path.exists():
             with open(sbert_path, "rb") as f:
@@ -161,18 +157,11 @@ class ModelRegistry:
                 logger.info("  Loaded SBERT encoder: %s", cfg["model_name"])
                 return
 
-        # Legacy TF-IDF
-        if tfidf_path.exists():
-            with open(tfidf_path, "rb") as f:
-                self.vectorizer = pickle.load(f)
-            self._vectorizer_type = "tfidf"
-            logger.info("  Loaded TF-IDF vectorizer")
 
     def _load_lp_config(self):
         with open(self._models_dir / "lp_config.json", "r") as f:
             self.lp_config = json.load(f)
 
-    # ── model construction ────────────────────────────────────────────────────
 
     def _build_nc_models(self):
         hp     = self.lp_config["hp"]
@@ -214,7 +203,6 @@ class ModelRegistry:
             "GAT":       "gat_lp_weights.weights.h5",
         }
 
-        # LP models are subclassed keras.Model — need a dummy forward pass to build
         dummy_edges = tf.constant([[0, 1]], dtype=tf.int32)
 
         for name, build_fn in builders.items():
@@ -238,7 +226,6 @@ class ModelRegistry:
         except Exception as e:
             logger.error("  Failed to load %s: %s", name, e)
 
-    # ── NC architecture builders ──────────────────────────────────────────────
 
     def _build_gcn_nc(self, hp: dict, n_feat: int, n_cls: int, loss) -> keras.Model:
         out_feat = hp["out_feat"]
@@ -308,7 +295,6 @@ class ModelRegistry:
         )
         return model
 
-    # ── LP architecture builders ──────────────────────────────────────────────
 
     def _build_sage_lp(self, hp: dict) -> GraphSAGELinkPredictor:
         return GraphSAGELinkPredictor(
@@ -344,17 +330,16 @@ class ModelRegistry:
             dropout_rate   = hp["dropout"],
         )
 
-    # ── warmup ────────────────────────────────────────────────────────────────
 
     def _warmup_predictions(self):
         """Single dummy pass per model to compile TF graphs."""
         for name, model in self.nc_models.items():
             try:
                 if name == "MLP":
-                    # MLP has no graph dependency — 1 row suffices
+                    # MLP has no graph dependency 
                     model.predict(self.X_full[:1], batch_size=1, verbose=0)
                 else:
-                    # GNN models reference the full edge_index → need all N rows
+                    # GNN models reference the full edge_index
                     model.predict(self.X_full, batch_size=self.X_full.shape[0], verbose=0)
                 logger.info("  Warmed up NC: %s", name)
             except Exception as e:

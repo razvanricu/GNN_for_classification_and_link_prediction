@@ -9,7 +9,7 @@ from app.config import get_settings
 from app.utils.logging import setup_logging
 from app.deps import get_model_registry, get_analytics_service
 
-from app.routers import health, catalog, products, predict, graph, analytics, ws, explainer
+from app.routers import health, catalog, products, predict, graph, analytics, explainer
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -57,7 +57,6 @@ app.include_router(products.router)
 app.include_router(predict.router)
 app.include_router(graph.router)
 app.include_router(analytics.router)
-app.include_router(ws.router)
 app.include_router(explainer.router)
 
 

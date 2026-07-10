@@ -27,10 +27,13 @@ class GraphSAGELinkPredictor(keras.Model):
         )
 
     def call(self, query_edges, training=None):
+        # Get embeddings for all nodes using the GraphSAGE encoder
         all_embeddings = self.encoder(self.node_features, training=training)
         src_embeddings = tf.gather(all_embeddings, query_edges[:, 0])
         dst_embeddings = tf.gather(all_embeddings, query_edges[:, 1])
+        # Compute dot product for link prediction
         dot_product = tf.reduce_sum(src_embeddings * dst_embeddings, axis=-1)
+        # Return the sigmoid of the dot product as the link prediction score
         return tf.nn.sigmoid(dot_product)
 
     def get_embeddings(self, training=False):
@@ -50,6 +53,7 @@ class MLPLinkPredictor(keras.Model):
         self.drop2 = layers.Dropout(dropout)
 
     def call(self, query_edges, training=None):
+        # Get embeddings for all nodes using the MLP encoder
         x = self.drop1(self.node_features, training=training)
         x = self.dense1(x)
         x = self.drop2(x, training=training)
@@ -57,10 +61,12 @@ class MLPLinkPredictor(keras.Model):
 
         x = tf.math.l2_normalize(x, axis=-1)
 
+        # Get embeddings for the source and destination nodes of the query edges
         src_embeddings = tf.gather(x, query_edges[:, 0])
         dst_embeddings = tf.gather(x, query_edges[:, 1])
-
+        # Compute dot product for link prediction
         dot_product = tf.reduce_sum(src_embeddings * dst_embeddings, axis=-1)
+        # Return the sigmoid of the dot product as the link prediction score
         return tf.nn.sigmoid(dot_product)
 
     def get_embeddings(self, training=False):
@@ -85,17 +91,20 @@ class GCNLinkPredictor(keras.Model):
         self.conv2 = StrictGCNConv(out_feat, out_feat, graph_info, activation=None)
 
     def call(self, query_edges, training=None):
+        # Get embeddings for all nodes using the GCN encoder
         x = self.drop1(self.node_features, training=training)
         x = self.conv1(x)
         x = self.drop2(x, training=training)
         all_embeddings = self.conv2(x)
-
+        # L2-normalize the embeddings to ensure they are on the unit sphere
         all_embeddings = tf.math.l2_normalize(all_embeddings, axis=-1)
-
+        # Get embeddings for the source and destination nodes of the query edges
         src_embeddings = tf.gather(all_embeddings, query_edges[:, 0])
         dst_embeddings = tf.gather(all_embeddings, query_edges[:, 1])
 
+        # Compute dot product for link prediction
         dot_product = tf.reduce_sum(src_embeddings * dst_embeddings, axis=-1)
+        # Return the sigmoid of the dot product as the link prediction score
         return tf.nn.sigmoid(dot_product)
 
     def get_embeddings(self, training=False):
@@ -136,16 +145,21 @@ class GATLinkPredictor(keras.Model):
         self.feature_drop = layers.Dropout(dropout_rate)
 
     def call(self, query_edges, training=None):
+        # Get embeddings for all nodes using the GAT encoder
         x = self.feature_drop(self.node_features, training=training)
         x = self.gat1(x, training=training)
         x = self.gat2(x, training=training)
 
+        # L2-normalize the embeddings to ensure they are on the unit sphere
         x = tf.math.l2_normalize(x, axis=-1)
 
+        # Get embeddings for the source and destination nodes of the query edges
         src_embeddings = tf.gather(x, query_edges[:, 0])
         dst_embeddings = tf.gather(x, query_edges[:, 1])
 
+        # Compute dot product for link prediction
         dot_product = tf.reduce_sum(src_embeddings * dst_embeddings, axis=-1)
+        # Return the sigmoid of the dot product as the link prediction score
         return tf.nn.sigmoid(dot_product)
 
     def get_embeddings(self, training=False):

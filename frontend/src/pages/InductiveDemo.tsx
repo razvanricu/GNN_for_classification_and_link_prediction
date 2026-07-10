@@ -63,7 +63,6 @@ export default function InductiveDemo() {
         <h1 className="text-2xl font-bold text-gray-900">Inductive Inference Demo</h1>
         <p className="text-sm text-gray-500 mt-1">
           Enter a new product (not in the graph) to see how models classify it and predict links.
-          GraphSAGE uses true inductive inference; GCN/GAT fall back to MLP.
         </p>
       </div>
 
@@ -166,7 +165,7 @@ export default function InductiveDemo() {
       {result && (
         <div className="bg-white rounded-lg shadow p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold">GNNExplainer — Inductive Edge Importance</h2>
+            <h2 className="text-lg font-semibold">GNNExplainer - Inductive Edge Importance</h2>
             <div className="flex items-center gap-2">
               <select
                 value={explainModel}
@@ -189,7 +188,7 @@ export default function InductiveDemo() {
 
           {explainLoading && (
             <div className="py-8 text-center text-sm text-gray-500">
-              Optimizing edge mask (~3-5s)...
+              Optimizing edge mask...
             </div>
           )}
 

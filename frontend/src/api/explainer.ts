@@ -8,12 +8,6 @@ export interface NCExplainResponse {
   graph: GraphData;
 }
 
-export interface LPExplainResponse {
-  lp_score: number;
-  linked: boolean;
-  graph: GraphData;
-}
-
 export async function fetchNCExplanation(
   asin: string,
   model: string,
@@ -21,21 +15,6 @@ export async function fetchNCExplanation(
 ): Promise<NCExplainResponse> {
   const { data } = await api.post("/explainer/nc", {
     asin,
-    model,
-    num_steps: numSteps,
-  });
-  return data;
-}
-
-export async function fetchLPExplanation(
-  srcAsin: string,
-  dstAsin: string,
-  model: string,
-  numSteps = 200
-): Promise<LPExplainResponse> {
-  const { data } = await api.post("/explainer/lp", {
-    src_asin: srcAsin,
-    dst_asin: dstAsin,
     model,
     num_steps: numSteps,
   });

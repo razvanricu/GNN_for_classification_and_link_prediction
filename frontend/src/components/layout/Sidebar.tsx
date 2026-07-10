@@ -31,9 +31,6 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
-      <div className="p-4 border-t border-gray-700 text-xs text-gray-500">
-        4 Models: GCN, GAT, SAGE, MLP
-      </div>
     </aside>
   );
 }

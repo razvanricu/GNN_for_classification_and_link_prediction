@@ -22,7 +22,7 @@ MAX_EXPLANATION_EDGES = 50
 
 
 class ExplainerService:
-    """GNNExplainer (Ying et al., 2019) — optimization-based explanation."""
+    """GNNExplainer - optimization-based explanation."""
 
     def __init__(self, registry: ModelRegistry):
         self._registry = registry
@@ -80,7 +80,6 @@ class ExplainerService:
 
         return sub_nodes, sub_edges, node_map, one_hop_nodes
 
-    # ── Masked forward passes ────────────────────────────────────────────────
 
     def _masked_forward_gcn(
         self, model, X_sub: tf.Tensor, sub_edge_index: np.ndarray,
@@ -93,9 +92,7 @@ class ExplainerService:
         ln2 = gcn_layer.ln2
         dense = gcn_layer.dense
 
-        # NOTE: registry pre-adds self-loops to edge_index_tf, and StrictGCNConv
-        # also adds self-loops internally → the trained model uses TWO sets.
-        # We must replicate that here, otherwise normalization differs.
+       
         def gcn_conv_masked(h, conv_layer, mask_with_loops):
             h = tf.matmul(h, conv_layer.weight)
             src = tf.constant(sub_edge_index[0], dtype=tf.int32)
@@ -103,7 +100,8 @@ class ExplainerService:
             self_loops = tf.range(num_nodes, dtype=tf.int32)
             src = tf.concat([src, self_loops, self_loops], axis=0)
             dst = tf.concat([dst, self_loops, self_loops], axis=0)
-
+            
+            # Compute degree normalization for GCN aggregation
             ones = tf.ones_like(src, dtype=tf.float32)
             deg = tf.math.unsorted_segment_sum(ones, dst, num_segments=num_nodes)
             deg_inv_sqrt = tf.pow(deg, -0.5)
@@ -112,6 +110,7 @@ class ExplainerService:
             norm_dst = tf.gather(deg_inv_sqrt, dst)
             norm = norm_src * norm_dst
 
+            # Apply the edge mask to the normalized messages
             h_source = tf.gather(h, src)
             h_normalized = h_source * tf.expand_dims(norm * mask_with_loops, -1)
             aggregated = tf.math.unsorted_segment_sum(h_normalized, dst, num_segments=num_nodes)
@@ -120,6 +119,7 @@ class ExplainerService:
                 aggregated = conv_layer.activation(aggregated)
             return aggregated
 
+        # Add self-loops to the edge mask for GCN layers
         self_loop_mask = tf.ones(num_nodes * 2, dtype=tf.float32)
         mask_with_loops = tf.concat([edge_mask, self_loop_mask], axis=0)
 
@@ -137,8 +137,6 @@ class ExplainerService:
         gat2 = next(l for l in model.layers if isinstance(l, StaticGraphAttn))
         dense = model.layers[-1]
 
-        # GAT NC uses edge_index_tf (with self-loops baked in by the registry),
-        # so the trained attention attends to self. Replicate that here.
         sl = tf.range(num_nodes, dtype=tf.int32)
         src = tf.concat([tf.constant(sub_edge_index[0], dtype=tf.int32), sl], axis=0)
         dst = tf.concat([tf.constant(sub_edge_index[1], dtype=tf.int32), sl], axis=0)
@@ -149,15 +147,18 @@ class ExplainerService:
             h = tf.matmul(features, layer.W)
             h_i = tf.gather(h, dst)
             h_j = tf.gather(h, src)
+            # Compute attention coefficients
             e = tf.squeeze(tf.matmul(tf.concat([h_i, h_j], axis=-1), layer.a), axis=-1)
             e = layer.leaky(e)
 
+            # Apply masked softmax to compute attention weights
             max_e = tf.math.unsorted_segment_max(e, dst, num_nodes)
             max_e_edges = tf.gather(max_e, dst)
             exp_e = tf.exp(e - max_e_edges)
             sum_exp = tf.math.unsorted_segment_sum(exp_e, dst, num_nodes)
             alpha = exp_e / (tf.gather(sum_exp, dst) + 1e-9)
 
+            # Apply the edge mask to the attention weights
             alpha_masked = alpha * mask
             messages = tf.expand_dims(alpha_masked, -1) * h_j
             out = tf.math.unsorted_segment_sum(messages, dst, num_nodes)
@@ -183,20 +184,19 @@ class ExplainerService:
         src = tf.constant(sub_edge_index[0], dtype=tf.int32)
         dst = tf.constant(sub_edge_index[1], dtype=tf.int32)
 
-        # Divide by degree (matches unsorted_segment_mean in the trained layer),
-        # not by sum(mask) — otherwise the mask cancels in the ratio and L1 has
-        # no effect on single-neighbor nodes.
         degree = tf.math.unsorted_segment_sum(
             tf.ones_like(src, dtype=tf.float32), dst, num_segments=num_nodes
         )
         degree = tf.maximum(degree, 1.0)
 
         def sage_conv_masked(features, conv, mask):
+            # Aggregate neighbor features with masking
             neighbor_feats = tf.gather(features, src)
             weighted_feats = neighbor_feats * tf.expand_dims(mask, -1)
             agg_sum = tf.math.unsorted_segment_sum(weighted_feats, dst, num_segments=num_nodes)
             agg_mean = agg_sum / tf.expand_dims(degree, -1)
 
+            # Combine with self features and apply linear transformation
             combined = tf.concat([features, agg_mean], axis=-1)
             out = conv.W(combined)
             if conv.activation:
@@ -208,123 +208,7 @@ class ExplainerService:
         x = sage_conv_masked(X_sub, sage_layer.conv1, edge_mask)
         x = sage_conv_masked(x, sage_layer.conv2, edge_mask)
         return dense(x)
-
-    # ── LP masked forward passes ─────────────────────────────────────────────
-
-    def _masked_forward_sage_lp(
-        self, model, X_sub: tf.Tensor, sub_edge_index: np.ndarray,
-        edge_mask: tf.Tensor, num_nodes: int
-    ) -> tf.Tensor:
-        encoder = model.encoder
-        src = tf.constant(sub_edge_index[0], dtype=tf.int32)
-        dst = tf.constant(sub_edge_index[1], dtype=tf.int32)
-
-        degree = tf.math.unsorted_segment_sum(
-            tf.ones_like(src, dtype=tf.float32), dst, num_segments=num_nodes
-        )
-        degree = tf.maximum(degree, 1.0)
-
-        def sage_conv_masked(features, conv, mask):
-            neighbor_feats = tf.gather(features, src)
-            weighted_feats = neighbor_feats * tf.expand_dims(mask, -1)
-            agg_sum = tf.math.unsorted_segment_sum(weighted_feats, dst, num_segments=num_nodes)
-            agg_mean = agg_sum / tf.expand_dims(degree, -1)
-
-            combined = tf.concat([features, agg_mean], axis=-1)
-            out = conv.W(combined)
-            if conv.activation:
-                out = conv.activation(out)
-            if conv.normalize:
-                out = tf.math.l2_normalize(out, axis=-1)
-            return out
-
-        x = sage_conv_masked(X_sub, encoder.conv1, edge_mask)
-        x = sage_conv_masked(x, encoder.conv2, edge_mask)
-        return tf.math.l2_normalize(x, axis=-1)
-
-    def _masked_forward_gcn_lp(
-        self, model, X_sub: tf.Tensor, sub_edge_index: np.ndarray,
-        edge_mask: tf.Tensor, num_nodes: int
-    ) -> tf.Tensor:
-        conv1 = model.conv1
-        conv2 = model.conv2
-
-        # Same convention as _masked_forward_gcn: registry pre-adds self-loops
-        # to graph_info, then StrictGCNConv adds them again → TWO sets.
-        def gcn_conv_masked(h, conv_layer, mask_with_loops):
-            h = tf.matmul(h, conv_layer.weight)
-            src = tf.constant(sub_edge_index[0], dtype=tf.int32)
-            dst = tf.constant(sub_edge_index[1], dtype=tf.int32)
-            self_loops = tf.range(num_nodes, dtype=tf.int32)
-            src = tf.concat([src, self_loops, self_loops], axis=0)
-            dst = tf.concat([dst, self_loops, self_loops], axis=0)
-
-            ones = tf.ones_like(src, dtype=tf.float32)
-            deg = tf.math.unsorted_segment_sum(ones, dst, num_segments=num_nodes)
-            deg_inv_sqrt = tf.pow(deg, -0.5)
-            deg_inv_sqrt = tf.where(tf.math.is_inf(deg_inv_sqrt), 0.0, deg_inv_sqrt)
-            norm_src = tf.gather(deg_inv_sqrt, src)
-            norm_dst = tf.gather(deg_inv_sqrt, dst)
-            norm = norm_src * norm_dst
-
-            h_source = tf.gather(h, src)
-            h_normalized = h_source * tf.expand_dims(norm * mask_with_loops, -1)
-            aggregated = tf.math.unsorted_segment_sum(h_normalized, dst, num_segments=num_nodes)
-
-            if conv_layer.activation:
-                aggregated = conv_layer.activation(aggregated)
-            return aggregated
-
-        self_loop_mask = tf.ones(num_nodes * 2, dtype=tf.float32)
-        mask_with_loops = tf.concat([edge_mask, self_loop_mask], axis=0)
-
-        x = gcn_conv_masked(X_sub, conv1, mask_with_loops)
-        x = gcn_conv_masked(x, conv2, mask_with_loops)
-        return tf.math.l2_normalize(x, axis=-1)
-
-    def _masked_forward_gat_lp(
-        self, model, X_sub: tf.Tensor, sub_edge_index: np.ndarray,
-        edge_mask: tf.Tensor, num_nodes: int
-    ) -> tf.Tensor:
-        gat1 = model.gat1
-        gat2 = model.gat2
-
-        # GAT LP uses edge_index_tf (with self-loops baked in by the registry).
-        sl = tf.range(num_nodes, dtype=tf.int32)
-        src = tf.concat([tf.constant(sub_edge_index[0], dtype=tf.int32), sl], axis=0)
-        dst = tf.concat([tf.constant(sub_edge_index[1], dtype=tf.int32), sl], axis=0)
-        self_loop_mask = tf.ones(num_nodes, dtype=tf.float32)
-        edge_mask_with_loops = tf.concat([edge_mask, self_loop_mask], axis=0)
-
-        def attn_layer_masked(features, layer, mask):
-            h = tf.matmul(features, layer.W)
-            h_i = tf.gather(h, dst)
-            h_j = tf.gather(h, src)
-            e = tf.squeeze(tf.matmul(tf.concat([h_i, h_j], axis=-1), layer.a), axis=-1)
-            e = layer.leaky(e)
-
-            max_e = tf.math.unsorted_segment_max(e, dst, num_nodes)
-            max_e_edges = tf.gather(max_e, dst)
-            exp_e = tf.exp(e - max_e_edges)
-            sum_exp = tf.math.unsorted_segment_sum(exp_e, dst, num_nodes)
-            alpha = exp_e / (tf.gather(sum_exp, dst) + 1e-9)
-
-            alpha_masked = alpha * mask
-            messages = tf.expand_dims(alpha_masked, -1) * h_j
-            out = tf.math.unsorted_segment_sum(messages, dst, num_nodes)
-            if layer.activation:
-                out = layer.activation(out)
-            return out
-
-        head_outputs = []
-        for head in gat1.heads:
-            head_outputs.append(attn_layer_masked(X_sub, head, edge_mask_with_loops))
-        x = tf.concat(head_outputs, axis=-1)
-
-        x = attn_layer_masked(x, gat2, edge_mask_with_loops)
-        return tf.math.l2_normalize(x, axis=-1)
-
-    # ── Main explanation methods ─────────────────────────────────────────────
+   
 
     def explain_node(
         self, node_idx: int, model_name: str,
@@ -334,19 +218,20 @@ class ExplainerService:
         if model is None:
             raise ValueError(f"NC model '{model_name}' not found")
 
-        # Real prediction the user sees from the classification endpoint —
-        # the explanation must target THIS class, not a recomputed one.
+        # Get the full model prediction for the node to determine the target class for explanation
         X_full = self._registry.X_full
         full_pred = model.predict(
             X_full, batch_size=X_full.shape[0], verbose=0
         )[node_idx]
         full_class = int(np.argmax(full_pred))
 
+        # Extract the 2-hop subgraph around the node
         sub_nodes, sub_edges, node_map, one_hop_nodes = self._extract_k_hop_subgraph(node_idx, k=2)
         local_target = node_map[node_idx]
         num_sub_nodes = len(sub_nodes)
         num_sub_edges = sub_edges.shape[1]
 
+        # If there are no edges in the subgraph, we cannot optimize a mask, so we return the explanation graph with an empty mask.
         if num_sub_edges == 0:
             return self._build_explanation_graph(
                 sub_nodes, sub_edges, np.array([]), node_idx, node_map,
@@ -355,6 +240,7 @@ class ExplainerService:
 
         X_sub = tf.constant(self._registry.X_full[sub_nodes], dtype=tf.float32)
 
+        # Select the appropriate forward function based on the model type
         dispatch = {
             "GCN": self._masked_forward_gcn,
             "GAT": self._masked_forward_gat,
@@ -363,9 +249,7 @@ class ExplainerService:
         forward_fn = dispatch[model_name]
 
         # Verify the local subgraph preserves the model's real prediction.
-        # If not, the subgraph is too restrictive (e.g. truncation, missing
-        # boundary effects) and the explanation would target a class the
-        # full model does not actually predict.
+        # If not, the subgraph is too restrictive and the explanation would target a class the full model does not actually predict.
         local_pred = forward_fn(
             model, X_sub, sub_edges, tf.ones(num_sub_edges), num_sub_nodes
         )[local_target].numpy()
@@ -378,16 +262,18 @@ class ExplainerService:
             )
         predicted_class = full_class
         confidence = float(full_pred[full_class])
-
+        # Initialize the edge mask logits for optimization
         mask_logits = tf.Variable(tf.zeros(num_sub_edges), trainable=True)
         optimizer = tf.optimizers.Adam(learning_rate=lr)
 
+        # Optimize the edge mask to maximize the prediction probability of the target class while regularizing for sparsity and entropy
         for _ in range(num_steps):
             with tf.GradientTape() as tape:
                 edge_mask = tf.sigmoid(mask_logits)
                 logits = forward_fn(model, X_sub, sub_edges, edge_mask, num_sub_nodes)
                 pred_probs = logits[local_target]
 
+                # Compute the loss components
                 pred_loss = -tf.math.log(pred_probs[predicted_class] + 1e-9)
                 l1_loss = LAMBDA_L1 * tf.reduce_sum(edge_mask)
                 entropy = -edge_mask * tf.math.log(edge_mask + 1e-9) \
@@ -395,6 +281,7 @@ class ExplainerService:
                 entropy_loss = LAMBDA_ENTROPY * tf.reduce_mean(entropy)
                 total_loss = pred_loss + l1_loss + entropy_loss
 
+            # Compute gradients and update the mask logits
             grads = tape.gradient(total_loss, [mask_logits])
             optimizer.apply_gradients(zip(grads, [mask_logits]))
 
@@ -404,98 +291,11 @@ class ExplainerService:
             one_hop_nodes, predicted_class, confidence
         )
 
-    def explain_link(
-        self, src_idx: int, dst_idx: int, model_name: str,
-        num_steps: int = DEFAULT_NUM_STEPS, lr: float = DEFAULT_LR
-    ) -> dict:
-        model = self._registry.lp_models.get(model_name)
-        if model is None:
-            raise ValueError(f"LP model '{model_name}' not found")
-
-        sub_nodes_src, _, _, one_hop_src = self._extract_k_hop_subgraph(src_idx, k=2)
-        sub_nodes_dst, _, _, one_hop_dst = self._extract_k_hop_subgraph(dst_idx, k=2)
-        all_nodes = set(sub_nodes_src.tolist()) | set(sub_nodes_dst.tolist())
-        one_hop_nodes = one_hop_src | one_hop_dst
-
-        sub_nodes = np.array(sorted(all_nodes), dtype=np.int32)
-        node_set = set(sub_nodes.tolist())
-        node_map = {int(n): i for i, n in enumerate(sub_nodes)}
-
-        edge_index = self._registry.edge_index
-        edges_local_src = []
-        edges_local_dst = []
-        for i in range(edge_index.shape[1]):
-            s, d = int(edge_index[0, i]), int(edge_index[1, i])
-            if s in node_set and d in node_set:
-                edges_local_src.append(node_map[s])
-                edges_local_dst.append(node_map[d])
-
-        if len(edges_local_src) == 0:
-            sub_edges = np.zeros((2, 0), dtype=np.int32)
-        else:
-            sub_edges = np.array([edges_local_src, edges_local_dst], dtype=np.int32)
-
-        num_sub_nodes = len(sub_nodes)
-        num_sub_edges = sub_edges.shape[1]
-        local_src = node_map[src_idx]
-        local_dst = node_map[dst_idx]
-
-        if num_sub_edges == 0:
-            return self._build_explanation_graph(
-                sub_nodes, sub_edges, np.array([]), src_idx, node_map,
-                one_hop_nodes, lp_score=0.0, center_idx_2=dst_idx
-            )
-
-        X_sub = tf.constant(self._registry.X_full[sub_nodes], dtype=tf.float32)
-        mask_logits = tf.Variable(tf.zeros(num_sub_edges), trainable=True)
-        optimizer = tf.optimizers.Adam(learning_rate=lr)
-
-        dispatch = {
-            "GraphSAGE": self._masked_forward_sage_lp,
-            "GCN": self._masked_forward_gcn_lp,
-            "GAT": self._masked_forward_gat_lp,
-        }
-        forward_fn = dispatch[model_name]
-
-        for _ in range(num_steps):
-            with tf.GradientTape() as tape:
-                edge_mask = tf.sigmoid(mask_logits)
-                embeddings = forward_fn(model, X_sub, sub_edges, edge_mask, num_sub_nodes)
-
-                src_emb = embeddings[local_src]
-                dst_emb = embeddings[local_dst]
-                score = tf.nn.sigmoid(tf.reduce_sum(src_emb * dst_emb))
-
-                pred_loss = -tf.math.log(score + 1e-9)
-                l1_loss = LAMBDA_L1 * tf.reduce_sum(edge_mask)
-                entropy = -edge_mask * tf.math.log(edge_mask + 1e-9) \
-                          - (1.0 - edge_mask) * tf.math.log(1.0 - edge_mask + 1e-9)
-                entropy_loss = LAMBDA_ENTROPY * tf.reduce_mean(entropy)
-                total_loss = pred_loss + l1_loss + entropy_loss
-
-            grads = tape.gradient(total_loss, [mask_logits])
-            optimizer.apply_gradients(zip(grads, [mask_logits]))
-
-        final_mask = tf.sigmoid(mask_logits).numpy()
-        lp_score = float(tf.nn.sigmoid(
-            tf.reduce_sum(
-                forward_fn(model, X_sub, sub_edges, tf.ones(num_sub_edges), num_sub_nodes)[local_src]
-                * forward_fn(model, X_sub, sub_edges, tf.ones(num_sub_edges), num_sub_nodes)[local_dst]
-            )
-        ).numpy())
-
-        return self._build_explanation_graph(
-            sub_nodes, sub_edges, final_mask, src_idx, node_map,
-            one_hop_nodes, lp_score=lp_score, center_idx_2=dst_idx
-        )
-
-    # ── Inductive explanation ───────────────────────────────────────────────
-
     def explain_node_inductive(
         self, text_vec: np.ndarray, model_name: str,
         num_steps: int = DEFAULT_NUM_STEPS, lr: float = DEFAULT_LR
     ) -> dict:
-        """GNNExplainer for a new (inductive) node using pseudo-neighbor injection."""
+        """GNNExplainer for a new node using pseudo-neighbor injection."""
         from app.deps import get_inductive_service
         inductive = get_inductive_service()
 
@@ -509,7 +309,7 @@ class ExplainerService:
         X_extended = np.vstack([self._registry.X_full, text_vec.reshape(1, -1)])
         new_idx = X_extended.shape[0] - 1
 
-        # Real inductive prediction the user sees — explanation must target this class.
+        # Build the extended edges for the new node and its pseudo-neighbors       
         extended_edges_full = inductive._build_extended_edges(neighbor_indices, new_idx)
         actual_pred = inductive._nc_forward(
             model_name, model, X_extended, new_idx, text_vec, extended_edges_full
@@ -517,7 +317,7 @@ class ExplainerService:
         actual_class = int(np.argmax(actual_pred))
         actual_confidence = float(actual_pred[actual_class])
 
-        # Build subgraph: new node + neighbors + their 1-hop neighborhoods
+        # Extract a subgraph around the new node and its pseudo-neighbors for explanation
         adj = self._get_adj_list()
         sub_node_set = {new_idx}
         one_hop_of_new = set(neighbor_indices.tolist())
@@ -534,7 +334,7 @@ class ExplainerService:
         sub_nodes = np.array(sorted(sub_node_set), dtype=np.int32)
         node_map = {int(n): i for i, n in enumerate(sub_nodes)}
 
-        # Build local edges: original edges within subgraph + synthetic edges to new node
+        # Build the local edges for the subgraph, including the new node and its pseudo-neighbors
         edge_index = self._registry.edge_index
         edges_local_src = []
         edges_local_dst = []
@@ -544,7 +344,7 @@ class ExplainerService:
                 edges_local_src.append(node_map[s])
                 edges_local_dst.append(node_map[d])
 
-        # Add synthetic edges: new_node <-> pseudo-neighbors
+        # Add edges from the new node to its pseudo-neighbors in the local subgraph
         local_new = node_map[new_idx]
         for n_idx in neighbor_indices:
             if int(n_idx) in node_map:
@@ -553,21 +353,24 @@ class ExplainerService:
                 edges_local_dst.append(local_n)
                 edges_local_src.append(local_n)
                 edges_local_dst.append(local_new)
-
+        
+        # If there are no edges in the local subgraph, we cannot optimize a mask, so we return the explanation graph with an empty mask.
         if len(edges_local_src) == 0:
             return self._build_explanation_graph_inductive(
                 sub_nodes, np.zeros((2, 0), dtype=np.int32), np.array([]),
-                new_idx, node_map, one_hop_of_new | {new_idx},
-                actual_class, actual_confidence, text_vec
+                new_idx, one_hop_of_new | {new_idx},
+                actual_class, actual_confidence
             )
 
+        # Build the local edge index for the subgraph
         sub_edges = np.array([edges_local_src, edges_local_dst], dtype=np.int32)
         num_sub_nodes = len(sub_nodes)
         num_sub_edges = sub_edges.shape[1]
 
-        # Feature matrix for subgraph (use extended features for new node)
+        # Create a TensorFlow constant for the features of the subgraph nodes
         X_sub = tf.constant(X_extended[sub_nodes], dtype=tf.float32)
 
+        # Select the appropriate forward function based on the model type
         dispatch = {
             "GCN": self._masked_forward_gcn,
             "GAT": self._masked_forward_gat,
@@ -576,8 +379,7 @@ class ExplainerService:
         forward_fn = dispatch[model_name]
 
         # Verify the local subgraph preserves the inductive prediction the
-        # rest of the system reports. If not, we'd be explaining a class
-        # the user never sees.
+        # rest of the system reports. If not, we'd be explaining a class the user never sees.
         local_pred = forward_fn(
             model, X_sub, sub_edges, tf.ones(num_sub_edges), num_sub_nodes
         )[local_new].numpy()
@@ -591,15 +393,18 @@ class ExplainerService:
         predicted_class = actual_class
         confidence = actual_confidence
 
+        # Initialize the edge mask logits for optimization
         mask_logits = tf.Variable(tf.zeros(num_sub_edges), trainable=True)
         optimizer = tf.optimizers.Adam(learning_rate=lr)
 
+        # Optimize the edge mask to maximize the prediction probability of the target class while regularizing for sparsity and entropy
         for _ in range(num_steps):
             with tf.GradientTape() as tape:
                 edge_mask = tf.sigmoid(mask_logits)
                 logits = forward_fn(model, X_sub, sub_edges, edge_mask, num_sub_nodes)
                 pred_probs = logits[local_new]
 
+                # Compute the loss components
                 pred_loss = -tf.math.log(pred_probs[predicted_class] + 1e-9)
                 l1_loss = LAMBDA_L1 * tf.reduce_sum(edge_mask)
                 entropy = -edge_mask * tf.math.log(edge_mask + 1e-9) \
@@ -607,35 +412,37 @@ class ExplainerService:
                 entropy_loss = LAMBDA_ENTROPY * tf.reduce_mean(entropy)
                 total_loss = pred_loss + l1_loss + entropy_loss
 
+            # Compute gradients and update the mask logits
             grads = tape.gradient(total_loss, [mask_logits])
             optimizer.apply_gradients(zip(grads, [mask_logits]))
 
+        # Apply the final sigmoid to get the edge mask values   
         final_mask = tf.sigmoid(mask_logits).numpy()
         return self._build_explanation_graph_inductive(
-            sub_nodes, sub_edges, final_mask, new_idx, node_map,
-            one_hop_of_new | {new_idx}, predicted_class, confidence, text_vec
+            sub_nodes, sub_edges, final_mask, new_idx,
+            one_hop_of_new | {new_idx}, predicted_class, confidence
         )
 
     def _build_explanation_graph_inductive(
         self, sub_nodes: np.ndarray, sub_edges: np.ndarray,
         mask_values: np.ndarray, new_node_idx: int,
-        node_map: Dict[int, int], one_hop_nodes: Set[int],
+        one_hop_nodes: Set[int],
         predicted_class: int, confidence: float,
-        text_vec: np.ndarray,
     ) -> dict:
         """Build explanation graph with the synthetic new node included."""
         edges = []
         # Aggregate undirected edges by averaging both directions' importance.
-        # Mean (vs max) softens asymmetric attention — edges whose mask is only
-        # high in one direction get a balanced score and may stay below the
-        # threshold, reducing visual clutter for GAT.
+        # Mean softens asymmetric attention - edges whose mask is only
+        # high in one direction get a balanced score and may stay below the threshold
         edge_acc: Dict[Tuple[int, int], List] = {}
         for i in range(len(mask_values)):
             val = float(mask_values[i])
+            # Only consider edges that connect to the new node or its one-hop neighbors
             src_global = int(sub_nodes[sub_edges[0, i]])
             dst_global = int(sub_nodes[sub_edges[1, i]])
             if src_global not in one_hop_nodes and dst_global not in one_hop_nodes:
                 continue
+            # Use a consistent ordering for undirected edges to aggregate importance
             edge_key = (min(src_global, dst_global), max(src_global, dst_global))
             acc = edge_acc.get(edge_key)
             if acc is None:
@@ -643,6 +450,7 @@ class ExplainerService:
             else:
                 acc[0] += val
                 acc[1] += 1
+        # Aggregate edges by averaging importance and filter by threshold
         edge_candidates = []
         for total, count, src_global, dst_global in edge_acc.values():
             mean_val = total / count
@@ -651,7 +459,8 @@ class ExplainerService:
             edge_candidates.append((mean_val, src_global, dst_global))
         edge_candidates.sort(key=lambda x: x[0], reverse=True)
         final_edges = edge_candidates[:MAX_EXPLANATION_EDGES]
-
+        
+        # Build the set of relevant nodes and their importance scores based on the final edges
         relevant_nodes = {new_node_idx}
         node_importance = {}
         for val, src_global, dst_global in final_edges:
@@ -660,11 +469,13 @@ class ExplainerService:
             node_importance[src_global] = max(node_importance.get(src_global, 0.0), val)
             node_importance[dst_global] = max(node_importance.get(dst_global, 0.0), val)
 
+        # Build the node data for the explanation graph, including the synthetic new node
         nodes = []
         for global_idx in sub_nodes:
             global_idx = int(global_idx)
             if global_idx not in relevant_nodes:
                 continue
+            # If the node is the synthetic new node, assign it a special ID and label
             if global_idx == new_node_idx:
                 node_data = {
                     "id": "__new__",
@@ -675,6 +486,7 @@ class ExplainerService:
                     "is_new": True,
                 }
             else:
+                # For existing nodes, use their ASIN and ground truth class
                 asin = str(self._registry.node_names[global_idx])
                 class_name = self._registry.get_class_name(int(self._registry.y_full[global_idx]))
                 node_data = {
@@ -688,6 +500,7 @@ class ExplainerService:
                 node_data["importance"] = round(node_importance[global_idx], 4)
             nodes.append({"data": node_data})
 
+        # Build the edge data for the explanation graph, using the special ID for the synthetic new node
         for val, src_global, dst_global in final_edges:
             src_id = "__new__" if src_global == new_node_idx else str(self._registry.node_names[src_global])
             dst_id = "__new__" if dst_global == new_node_idx else str(self._registry.node_names[dst_global])
@@ -708,7 +521,6 @@ class ExplainerService:
             "confidence": round(confidence, 4),
         }
 
-    # ── Build response ───────────────────────────────────────────────────────
 
     def _build_explanation_graph(
         self, sub_nodes: np.ndarray, sub_edges: np.ndarray,
@@ -722,16 +534,17 @@ class ExplainerService:
     ) -> dict:
         edges = []
         # Aggregate undirected edges by averaging both directions' importance.
-        # Mean (vs max) softens asymmetric attention — edges whose mask is only
-        # high in one direction get a balanced score and may stay below the
-        # threshold, reducing visual clutter for GAT.
+        # Mean softens asymmetric attention - edges whose mask is only
+        # high in one direction get a balanced score and may stay below the threshold
         edge_acc: Dict[Tuple[int, int], List] = {}
         for i in range(len(mask_values)):
             val = float(mask_values[i])
+            # Only consider edges that connect to the center node or its one-hop neighbors
             src_global = int(sub_nodes[sub_edges[0, i]])
             dst_global = int(sub_nodes[sub_edges[1, i]])
             if src_global not in one_hop_nodes and dst_global not in one_hop_nodes:
                 continue
+            # Use a consistent ordering for undirected edges to aggregate importance
             edge_key = (min(src_global, dst_global), max(src_global, dst_global))
             acc = edge_acc.get(edge_key)
             if acc is None:
@@ -739,6 +552,7 @@ class ExplainerService:
             else:
                 acc[0] += val
                 acc[1] += 1
+        # Aggregate edges by averaging importance and filter by threshold
         edge_candidates = []
         for total, count, src_global, dst_global in edge_acc.values():
             mean_val = total / count
@@ -748,6 +562,7 @@ class ExplainerService:
         edge_candidates.sort(key=lambda x: x[0], reverse=True)
         final_edges = edge_candidates[:MAX_EXPLANATION_EDGES]
 
+        # Build the set of relevant nodes and their importance scores based on the final edges
         relevant_nodes = {center_idx}
         if center_idx_2 is not None:
             relevant_nodes.add(center_idx_2)
@@ -758,6 +573,7 @@ class ExplainerService:
             node_importance[src_global] = max(node_importance.get(src_global, 0.0), val)
             node_importance[dst_global] = max(node_importance.get(dst_global, 0.0), val)
 
+        # Build the node data for the explanation graph
         nodes = []
         for global_idx in sub_nodes:
             global_idx = int(global_idx)
@@ -776,6 +592,7 @@ class ExplainerService:
                 node_data["importance"] = round(node_importance[global_idx], 4)
             nodes.append({"data": node_data})
 
+        # Build the edge data for the explanation graph
         for val, src_global, dst_global in final_edges:
             src_asin = str(self._registry.node_names[src_global])
             dst_asin = str(self._registry.node_names[dst_global])
@@ -787,7 +604,7 @@ class ExplainerService:
                     "importance": round(val, 4),
                 }
             })
-
+        # Build the final result dictionary with nodes, edges, and optional prediction information
         result = {"nodes": nodes, "edges": edges}
         if predicted_class is not None:
             result["predicted_class_idx"] = predicted_class

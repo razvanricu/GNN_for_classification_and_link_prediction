@@ -67,7 +67,7 @@ class GraphService:
         """Neighborhood graph + predicted edges from LP model."""
         base_graph = self.k_hop_neighborhood(asin, hops, max_nodes)
 
-        # Get LP predictions — use lazy import to avoid circular deps
+        # Get LP predictions 
         from app.deps import get_lp_service
         lp_service = get_lp_service()
         lp_results = lp_service.top_k_for_node(asin, k=top_k)

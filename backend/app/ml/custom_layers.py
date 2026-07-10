@@ -118,6 +118,7 @@ class StaticGraphAttn(layers.Layer):
         self.activation = layers.Activation(activation) if activation else None
 
     def call(self, features, training=None):
+        # Compute attention coefficients and aggregate features
         src = self.edge_index[0]
         dst = self.edge_index[1]
         N = tf.shape(features)[0]
@@ -138,7 +139,7 @@ class StaticGraphAttn(layers.Layer):
         alpha = exp_e / (tf.gather(sum_exp, dst) + 1e-9)
 
         alpha = self.attn_dropout(alpha, training=training)
-
+        # Aggregate messages
         messages = tf.expand_dims(alpha, -1) * h_j
         out = tf.math.unsorted_segment_sum(messages, dst, N)
 
@@ -192,7 +193,7 @@ class MultiHeadStaticGAT(layers.Layer):
 
 
 class SAGEConvLayer(layers.Layer):
-    """Single GraphSAGE convolution (mean aggregation)."""
+    """Single GraphSAGE convolution."""
 
     def __init__(self, out_feat, edge_index, normalize=True, activation=None, **kwargs):
         super().__init__(**kwargs)
@@ -204,18 +205,22 @@ class SAGEConvLayer(layers.Layer):
         self.activation = layers.Activation(activation) if activation else None
 
     def call(self, features, training=None):
+        # Aggregate neighbor features using mean aggregation
         src = self.edge_index[0]
         dst = self.edge_index[1]
         num_nodes = tf.shape(features)[0]
 
+        # Gather neighbor features and compute mean
         neighbor_features = tf.gather(features, src)
         aggregated_neighbors = tf.math.unsorted_segment_mean(
             neighbor_features, dst, num_segments=num_nodes
         )
 
+        # Concatenate self features with aggregated neighbor features
         combined = tf.concat([features, aggregated_neighbors], axis=-1)
         out = self.W(combined)
 
+        # Apply activation and normalization if specified
         if self.activation:
             out = self.activation(out)
         if self.normalize:
@@ -234,12 +239,7 @@ class SAGEConvLayer(layers.Layer):
 
 
 class StaticGraphSAGE(layers.Layer):
-    """Two-layer GraphSAGE with dropout.
-
-    `final_activation=None` (used by LP) gives signed embeddings whose
-    dot-product spans [-1, 1] after L2-norm, avoiding the sigmoid cap at 0.5
-    caused by ReLU on the last layer. Default `"relu"` preserves NC behavior.
-    """
+    """Two-layer GraphSAGE with dropout."""
 
     def __init__(self, out_feat, edge_index, dropout_rate=0.0, normalize=True,
                  final_activation="relu", **kwargs):

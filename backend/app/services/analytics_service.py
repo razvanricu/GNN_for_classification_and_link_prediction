@@ -60,7 +60,6 @@ class AnalyticsService:
     def get_tsne(self, sample: int = 2000):
         if not self._tsne_coords:
             return None
-        # Return up to 'sample' points — only subsample per-point arrays
         coords = self._tsne_coords
         num_points = len(coords.get("x", []))
         if num_points > sample:
@@ -70,7 +69,7 @@ class AnalyticsService:
                 if len(v) == num_points:
                     result[k] = [v[i] for i in indices]
                 else:
-                    result[k] = v  # metadata arrays (e.g. class_names) stay as-is
+                    result[k] = v 
             return result
         return coords
 

@@ -2,7 +2,6 @@ import api from "./client";
 import type {
   ClassDistribution,
   DegreeDistribution,
-  FeatureImportance,
   TSNEData,
   GraphStats,
   HealthResponse,
@@ -25,11 +24,6 @@ export async function fetchClassDistribution(): Promise<ClassDistribution[]> {
 
 export async function fetchDegreeDistribution(): Promise<DegreeDistribution> {
   const { data } = await api.get("/analytics/degree-distribution");
-  return data;
-}
-
-export async function fetchFeatureImportance(): Promise<FeatureImportance[]> {
-  const { data } = await api.get("/analytics/feature-importance");
   return data;
 }
 

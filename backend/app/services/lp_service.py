@@ -59,7 +59,6 @@ class LPService:
             exclude = neighbors_from_src | neighbors_from_dst
             exclude.add(idx)  # exclude self
 
-        num_nodes = self._registry.num_nodes
         thresholds = self._registry.lp_config.get("thresholds", {})
 
         COSINE_GATE = 0.40
